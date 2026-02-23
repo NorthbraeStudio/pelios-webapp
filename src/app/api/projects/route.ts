@@ -1,13 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/projects
  *
- * Reads pelios_token from HttpOnly cookie (set at login),
- * forwards it to the Pelios API as an Authorization header,
- * and returns the result.
+ * This is a Next.js App Router route handler.
+ * It runs server-side and proxies requests to the Pelios Azure API.
+ *
+ * Flow:
+ * 1) Reads NEXT_PUBLIC_API_BASE_URL from .env.local
+ * 2) Reads pelios_token from HttpOnly cookie (set by /api/auth/token)
+ * 3) Calls Azure: GET {BASE}/api/Pelios/GetSources
+ * 4) Returns Azure response to the browser (status + body)
  */
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   if (!baseUrl) {
@@ -17,30 +22,44 @@ export async function GET(req: Request) {
     );
   }
 
-  // ✅ Read the token from cookies (HttpOnly -> only server can read it)
-  const cookieHeader = req.headers.get("cookie") || "";
-  const tokenMatch = cookieHeader.match(/(?:^|;\s*)pelios_token=([^;]+)/);
-  const token = tokenMatch ? decodeURIComponent(tokenMatch[1]) : null;
+  const token = req.cookies.get("pelios_token")?.value;
 
   if (!token) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Not authenticated (missing pelios_token cookie)" },
+      { status: 401 }
+    );
   }
 
-  const res = await fetch(`${baseUrl}/Pelios/GetSources`, {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      // ✅ Backend still expects Bearer token
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const apiBase = baseUrl.replace(/\/+$/, "");
+  const url = `${apiBase}/api/Pelios/GetSources`;
 
-  const text = await res.text();
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
 
-  return new NextResponse(text, {
-    status: res.status,
-    headers: {
-      "Content-Type": res.headers.get("content-type") ?? "application/json",
-    },
-  });
+    const bodyText = await res.text();
+
+    return new NextResponse(bodyText, {
+      status: res.status,
+      headers: {
+        "Content-Type": res.headers.get("content-type") ?? "application/json",
+      },
+    });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      {
+        error: "Failed to reach Pelios API",
+        detail: err instanceof Error ? err.message : String(err),
+        endpoint: url,
+      },
+      { status: 502 }
+    );
+  }
 }

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     password: String(password ?? ""),
   });
 
-  const url = `${baseUrl}/Auth/Token?${qs.toString()}`;
+  const url = `${baseUrl}/api/Auth/Token?${qs.toString()}`;
 
   const res = await fetch(url, { method: "GET" });
   const text = await res.text();
