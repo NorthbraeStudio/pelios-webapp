@@ -345,12 +345,19 @@ export default function AnalysisDashboard({
     );
   }
 
-  if (!initialData) {
+if (!initialData || !initialData.id) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
-        <div className="animate-pulse flex flex-col items-center">
-            <div className="w-12 h-12 bg-[#D2FF1F] rounded-full mb-4"></div>
-            <p className="text-gray-500 font-medium">Loading Analysis Data...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA] p-10">
+        <div className="bg-red-50 p-8 rounded-2xl w-full max-w-3xl overflow-auto border border-red-200">
+            <h2 className="text-xl font-bold mb-4 text-red-700">DEBUG: Data Structure Mismatch</h2>
+            <p className="mb-4 text-sm text-gray-700">The component received data, but it doesn't match the expected 'ProjectData' type (missing 'id' or other critical fields).</p>
+            <h3 className="font-bold text-sm mb-2 text-gray-900">Raw Data Received:</h3>
+            <pre className="text-xs bg-white p-4 rounded border border-gray-200 text-black">
+              {JSON.stringify(initialData, null, 2)}
+            </pre>
+            <a href="/projects" className="mt-6 inline-block px-4 py-2 bg-black text-white rounded text-sm hover:bg-gray-800 transition">
+              ← Back to Projects
+            </a>
         </div>
       </div>
     );
