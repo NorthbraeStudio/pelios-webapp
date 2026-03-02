@@ -2,22 +2,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AnalysisDashboard from "./AnalysisDashboard";
 
+// Force the page to never cache
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-export default async function AnalysisPage({ 
-  params, 
-  searchParams 
-}: { 
-  params: Promise<{ id: string }>,
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
-}) {
+export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const sParams = await searchParams;
-  
-  // LOG CLUE: Your logs show 'nxtPid'. We'll capture that just in case.
-  const nxtPid = sParams.nxtPid as string;
-  const targetId = nxtPid || id;
-
   const cookieStore = await cookies();
   const token = cookieStore.get("pelios_token")?.value;
 
@@ -31,14 +21,16 @@ export default async function AnalysisPage({
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     
-    // Fetch using the ID we found (either from URL path or nxtPid)
+    // We add a timestamp (?t=...) to the end of the URL. 
+    // This trick stops Vercel from showing you a cached "Project Not Found" page.
+    const timestamp = Date.now();
     const res = await fetch(
-      `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${targetId}`,
+      `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${id}&t=${timestamp}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
-        cache: "no-store", 
       }
     );
 
@@ -48,22 +40,24 @@ export default async function AnalysisPage({
 
     const data = await res.json();
     
-    // UNIVERSAL MATCHING:
-    // If the API returns data for this sourceId, it IS our project.
-    if (Array.isArray(data) && data.length > 0) {
-      projectData = data[0]; 
-    } else if (data && !Array.isArray(data)) {
+    // DEBUG: This will show up in your Vercel Logs so we can see the 'Shape' of the data
+    console.log(`VERCEL DEBUG: Data for ID ${id}:`, JSON.stringify(data).substring(0, 100));
+
+    // Handle different API shapes (Array vs Object)
+    if (Array.isArray(data)) {
+      projectData = data.find((p: any) => String(p.id) === String(id) || String(p.sourceId) === String(id)) || data[0];
+    } else {
       projectData = data;
     }
 
-    if (!projectData) {
-      error = `No analysis data found for ID: ${targetId}`;
+    if (!projectData || Object.keys(projectData).length === 0) {
+      error = `Project ${id} was found but contains no analysis data yet.`;
     }
 
   } catch (e) {
-    console.error("Fetch error:", e);
-    error = "Failed to load analysis data.";
+    console.error("Critical Fetch Error:", e);
+    error = "The system encountered a connection error. Please refresh.";
   }
 
-  return <AnalysisDashboard initialData={projectData} projectId={targetId} error={error} />;
+  return <AnalysisDashboard initialData={projectData} projectId={id} error={error} />;
 }
