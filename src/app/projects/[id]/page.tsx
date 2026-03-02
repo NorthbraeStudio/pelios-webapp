@@ -4,8 +4,20 @@ import AnalysisDashboard from "./AnalysisDashboard";
 
 export const dynamic = 'force-dynamic';
 
-export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AnalysisPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ id: string }>,
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
   const { id } = await params;
+  const sParams = await searchParams;
+  
+  // LOG CLUE: Your logs show 'nxtPid'. We'll capture that just in case.
+  const nxtPid = sParams.nxtPid as string;
+  const targetId = nxtPid || id;
+
   const cookieStore = await cookies();
   const token = cookieStore.get("pelios_token")?.value;
 
@@ -19,9 +31,9 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     
-    // We fetch using the sourceId directly
+    // Fetch using the ID we found (either from URL path or nxtPid)
     const res = await fetch(
-      `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${id}`,
+      `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${targetId}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -36,9 +48,8 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
 
     const data = await res.json();
     
-    // VERCEL FIX: Normalize the data search
-    // We check if the data exists at all. If the API returns 
-    // an array for that specific sourceId, we just take the first result.
+    // UNIVERSAL MATCHING:
+    // If the API returns data for this sourceId, it IS our project.
     if (Array.isArray(data) && data.length > 0) {
       projectData = data[0]; 
     } else if (data && !Array.isArray(data)) {
@@ -46,13 +57,13 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
     }
 
     if (!projectData) {
-      error = `No analysis data found for ID: ${id}. Please ensure the video has been processed.`;
+      error = `No analysis data found for ID: ${targetId}`;
     }
 
   } catch (e) {
     console.error("Fetch error:", e);
-    error = "Failed to load analysis data. Please check your connection.";
+    error = "Failed to load analysis data.";
   }
 
-  return <AnalysisDashboard initialData={projectData} projectId={id} error={error} />;
+  return <AnalysisDashboard initialData={projectData} projectId={targetId} error={error} />;
 }
