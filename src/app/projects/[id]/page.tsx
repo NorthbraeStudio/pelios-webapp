@@ -2,9 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AnalysisDashboard from "./AnalysisDashboard";
 
-// Force the page to never cache
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 export default async function AnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,44 +17,40 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   let error = null;
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://api20260113161430-c0g9evgkhmh6anbg.canadacentral-01.azurewebsites.net";
+    const apiUrl = `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${id}&t=${Date.now()}`;
     
-    // We add a timestamp (?t=...) to the end of the URL. 
-    // This trick stops Vercel from showing you a cached "Project Not Found" page.
-    const timestamp = Date.now();
-    const res = await fetch(
-      `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${id}&t=${timestamp}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Cache-Control': 'no-cache',
-        },
+    const res = await fetch(apiUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-cache',
       }
-    );
+    });
+
+    // 🚨 THE MAGIC TRICK: We grab the RAW text before it even tries to process it
+    const rawText = await res.text();
 
     if (!res.ok) {
-      throw new Error(`API error: ${res.status}`);
-    }
-
-    const data = await res.json();
-    
-    // DEBUG: This will show up in your Vercel Logs so we can see the 'Shape' of the data
-    console.log(`VERCEL DEBUG: Data for ID ${id}:`, JSON.stringify(data).substring(0, 100));
-
-    // Handle different API shapes (Array vs Object)
-    if (Array.isArray(data)) {
-      projectData = data.find((p: any) => String(p.id) === String(id) || String(p.sourceId) === String(id)) || data[0];
+       error = `Backend Error ${res.status}. Raw Response: ${rawText.substring(0, 200)}`;
     } else {
-      projectData = data;
+       // Now we parse the raw text into JSON
+       const data = JSON.parse(rawText);
+       
+       if (Array.isArray(data) && data.length > 0) {
+         projectData = data[0]; 
+       } else if (data && !Array.isArray(data) && Object.keys(data).length > 0) {
+         projectData = data;
+       }
+
+       if (!projectData) {
+         // If it's empty, PRINT THE RAW AZURE RESPONSE to the screen!
+         error = `API connected successfully, but no matching data was found. RAW AZURE RESPONSE: ${rawText}`;
+       }
     }
 
-    if (!projectData || Object.keys(projectData).length === 0) {
-      error = `Project ${id} was found but contains no analysis data yet.`;
-    }
-
-  } catch (e) {
-    console.error("Critical Fetch Error:", e);
-    error = "The system encountered a connection error. Please refresh.";
+  } catch (e: any) {
+    console.error("Fetch error:", e);
+    error = `System Error: ${e.message}`;
   }
 
   return <AnalysisDashboard initialData={projectData} projectId={id} error={error} />;
