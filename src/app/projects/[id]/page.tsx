@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AnalysisDashboard from "./AnalysisDashboard";
@@ -15,16 +16,16 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
   let error = null;
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://api20260113161430-c0g9evgkhmh6anbg.canadacentral-01.azurewebsites.net";
+    // 1. Use the environment variable for the base URL
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     
-    // We fetch the playback data for this specific ID
     const res = await fetch(
       `${baseUrl}/api/Pelios/GetPlaybackData?sourceId=${id}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
         },
-        cache: "no-store",
+        cache: "no-store", 
       }
     );
 
@@ -34,23 +35,20 @@ export default async function AnalysisPage({ params }: { params: Promise<{ id: s
 
     const data = await res.json();
     
-    // LOGIC FIX: 
-    // If the API returns a single object for that ID, use it.
-    // If it returns an array, we find the one where the ID matches.
+    // 2. Flexible Matching: Compare strings to strings to avoid type errors
     if (Array.isArray(data)) {
-      // Check for 'id', 'sourceId', or 'clipId' to be safe
       projectData = data.find((p: any) => 
         (p.id?.toString() === id) || 
-        (p.sourceId?.toString() === id)
+        (p.sourceId?.toString() === id) ||
+        (p.clipId?.toString() === id)
       );
-      
-      // FALLBACK for MVP: If we have data but the ID doesn't match perfectly, 
-      // take the first one so the page doesn't break for your team.
-      if (!projectData && data.length > 0) {
-        projectData = data[0];
-      }
-    } else {
+    } else if (data && (data.id?.toString() === id || data.sourceId?.toString() === id)) {
       projectData = data;
+    }
+
+    // 3. MVP Failsafe: If data exists but ID matching is inconsistent, use the first item
+    if (!projectData && Array.isArray(data) && data.length > 0) {
+        projectData = data[0];
     }
 
     if (!projectData) {
